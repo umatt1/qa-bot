@@ -14,27 +14,28 @@ load_dotenv()
 # Initialize OpenAI and Pinecone
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
-PINECONE_ENV = "us-west1-gcp-free"  # Free tier environment
 
 # Initialize embeddings
 embeddings = OpenAIEmbeddings()
 
 # Initialize Pinecone
-pinecone.init(api_key=PINECONE_API_KEY, environment=PINECONE_ENV)
 index_name = "allstate-articles"
+pc = pinecone.Pinecone(
+    api_key=PINECONE_API_KEY
+)
 
 # Create serverless index if it doesn't exist
-if index_name not in pinecone.list_indexes():
-    pinecone.create_index(
+if index_name not in pc.list_indexes():
+    pc.create_index(
         name=index_name,
         dimension=1536,  # OpenAI embeddings are 1536 dimensions
         metric='cosine',
         spec=pinecone.ServerlessSpec(
             cloud='aws',
-            region='us-west-2'
+            region='us-east-1'
         )
     )
-index = pinecone.Index(index_name)
+index = pc.Index(index_name)
 
 def scrape_article(url: str) -> Dict[str, str]:
     """Scrape a single article from Allstate resources."""
