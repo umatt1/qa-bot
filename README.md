@@ -10,12 +10,12 @@ An intelligent chatbot powered by LangChain that can answer insurance-related qu
 - Processes and stores article content in Pinecone vector database
 - Generates embeddings using OpenAI's embedding model
 
-### Planned Features
-- LangChain/LangGraph-based QA system
-- Natural language query processing
-- Context-aware responses using RAG (Retrieval Augmented Generation)
-- Support for complex insurance-related queries
-- Memory for maintaining conversation context
+### QA Bot (`qa_bot.py`)
+- Implements an intelligent QA system using LangChain and GPT-4
+- Performs context-aware retrieval using RAG (Retrieval Augmented Generation)
+- Provides source citations for answers
+- Supports natural language queries about insurance topics
+- Uses Pinecone for efficient similarity search of relevant content
 
 ## Setup
 
@@ -42,18 +42,19 @@ python ingest.py
 - Each document is chunked and embedded using OpenAI's embeddings
 - Metadata includes article URL, title, and content preview
 
-### Planned Architecture
+### QA System Architecture
 - RAG (Retrieval Augmented Generation) for accurate responses
-- LangChain for orchestrating the conversation flow
-- LangGraph for complex multi-step reasoning
-- Vector similarity search for relevant context retrieval
+- LangChain for orchestrating the QA pipeline
+- Pinecone vector similarity search for relevant context retrieval
+- GPT-4 for natural language understanding and response generation
+- Source citation system for transparency
 
 ## Future Development
-1. Implement the QA system using LangChain/LangGraph
-2. Add support for multi-turn conversations
-3. Implement fact-checking and source citation
+1. Add support for multi-turn conversations with memory
+2. Expand coverage to more insurance topics and knowledge bases
+3. Implement additional fact-checking mechanisms
 4. Add support for policy-specific questions
-5. Integrate with more insurance knowledge bases
+5. Enhance source citation formatting and presentation
 
 ## Contributing
 Feel free to contribute by opening issues or submitting pull requests.
