@@ -15,7 +15,6 @@ from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.firefox import GeckoDriverManager
 
 # Load environment variables
 load_dotenv()
@@ -35,220 +34,146 @@ def setup_driver():
     firefox_options.add_argument("--headless")
     firefox_options.add_argument("--disable-gpu")
     
-    try:
-        service = Service(GeckoDriverManager().install())
-        driver = webdriver.Firefox(service=service, options=firefox_options)
-        return driver
-    except Exception as e:
-        print(f"Error setting up Firefox driver: {str(e)}")
-        import traceback
-        print(traceback.format_exc())
-        raise
+    # Use local Firefox installation instead of downloading
+    driver = webdriver.Firefox(options=firefox_options)
+    return driver
 
-def get_article_urls(base_urls):
+def get_article_urls(base_url: str, max_articles: int = 5) -> set:
+    """Collect article URLs from a base page, limited to max_articles."""
     article_urls = set()
-    driver = setup_driver()
-    
     try:
-        for base_url in base_urls:
-            try:
-                print(f"\n=== Fetching from {base_url} ===")
-                
-                # Load the page with Selenium
-                driver.get(base_url)
-                print("Page loaded, waiting for content...")
-                
-                # Wait for the main content to load
-                WebDriverWait(driver, 10).until(
-                    EC.presence_of_element_located((By.TAG_NAME, "main"))
-                )
-                
-                # Give extra time for dynamic content to load
-                time.sleep(2)
-                
-                # Get the page source after JavaScript has run
-                soup = BeautifulSoup(driver.page_source, 'html.parser')
-                
-                print(f"\nPage Title: {soup.title.string if soup.title else 'No title found'}")
-                
-                # Find all article links
-                print("\nLooking for article links...")
-                links = soup.find_all('a', href=True)
-                print(f"Found {len(links)} total links")
-                
-                for link in links:
-                    href = link['href']
-                    text = link.text.strip()
-                    
-                    # Only process links that look like articles
-                    if '/resources/' in href and href != base_url and text:
-                        print(f"\nPotential article link found:")
-                        print(f"Text: {text}")
-                        print(f"Href: {href}")
-                        
-                        # Make sure we have absolute URLs
-                        if not href.startswith('http'):
-                            href = urljoin(base_url, href)
-                        
-                        article_urls.add(href)
-                        print("Added to article list")
-                
-                print(f"\nFound {len(article_urls)} unique articles so far")
-                time.sleep(1)  # Rate limiting
-                
-            except Exception as e:
-                print(f"Error processing {base_url}: {str(e)}")
-                continue
-    
-    finally:
-        driver.quit()
-    
-    print(f"\nTotal unique article URLs collected: {len(article_urls)}")
-    return list(article_urls)
-
-def scrape_article(url):
-    """Scrape an individual article."""
-    driver = setup_driver()
-    
-    try:
-        print(f"\n=== Processing article: {url} ===")
-        
-        # Load the page with Selenium
-        driver.get(url)
+        driver = setup_driver()
+        print(f"\n=== Fetching from {base_url} ===")
+        driver.get(base_url)
         print("Page loaded, waiting for content...")
         
-        # Wait for content to load
-        WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.TAG_NAME, "main"))
-        )
+        # Get page title for debugging
+        print(f"\nPage Title: {driver.title}\n")
         
-        # Give extra time for dynamic content to load
-        time.sleep(2)
+        # Look for article links
+        print("Looking for article links...")
+        links = driver.find_elements(By.TAG_NAME, "a")
+        print(f"Found {len(links)} total links\n")
         
-        # Get the page source after JavaScript has run
-        soup = BeautifulSoup(driver.page_source, 'html.parser')
-        
-        print("\nArticle page structure:")
-        print("Title tag content:", soup.title.string if soup.title else "No title found")
-        
-        # Try different content selectors
-        content_selectors = [
-            ('div', 'article-content'),
-            ('div', 'article-body'),
-            ('main', None),
-            ('article', None),
-            ('div', lambda x: x and ('content' in x.lower() or 'article' in x.lower()))
-        ]
-        
-        content = None
-        for tag, class_ in content_selectors:
-            content = soup.find(tag, class_=class_)
-            if content:
-                print(f"\nFound content using selector: {tag}, {class_}")
+        for link in links:
+            if len(article_urls) >= max_articles:
                 break
-        
-        if not content:
-            print("No article content found with any selector")
-            return None
-        
-        # Extract title
-        title = None
-        title_elements = soup.find_all(['h1', 'h2'], class_=lambda x: x and ('title' in x.lower() or 'heading' in x.lower()))
-        if title_elements:
-            title = title_elements[0].get_text().strip()
-        if not title and soup.find('h1'):
-            title = soup.find('h1').get_text().strip()
-        
-        # Extract content
-        paragraphs = content.find_all(['p', 'h2', 'h3', 'h4', 'li'])
-        article_text = '\n'.join([p.get_text().strip() for p in paragraphs if p.get_text().strip()])
-        
-        if not article_text:
-            print("No article text found")
-            return None
-        
-        print(f"\nExtracted content preview: {article_text[:200]}...")
-        
-        return {
-            'url': url,
-            'title': title or "Untitled Article",
-            'content': article_text
-        }
-    
+                
+            try:
+                href = link.get_attribute("href")
+                text = link.text.strip()
+                
+                if href and text and "/resources/car-insurance/" in href and not any(x in href for x in ["quote", "bundle", "calculator"]):
+                    print(f"Potential article link found:")
+                    print(f"Text: {text}")
+                    print(f"Href: {href}")
+                    article_urls.add(href)
+                    print("Added to article list\n")
+                    
+            except Exception as e:
+                continue
+                
     except Exception as e:
-        print(f"Error scraping {url}: {str(e)}")
-        return None
-    
+        print(f"Error fetching article URLs: {str(e)}")
     finally:
         driver.quit()
+        
+    return article_urls
 
-def process_and_upload_articles(article_urls):
+def scrape_article(url: str) -> Dict:
+    """Scrape a single article page."""
+    print(f"\n=== Processing article: {url} ===")
+    
+    try:
+        print("Fetching article...")
+        response = requests.get(url)
+        print(f"Response status: {response.status_code}")
+        
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # Extract title
+            title = soup.title.string if soup.title else ""
+            print(f"Found title: {title}")
+            
+            # Extract main content - adjust selector based on actual page structure
+            content = soup.find('main') or soup.find('article') or soup.find('div', class_='content')
+            if content:
+                text = content.get_text(separator=' ', strip=True)
+                print(f"Found content length: {len(text)} characters")
+                return {
+                    "url": url,
+                    "title": title,
+                    "content": text[:1000]  # Limit content for testing
+                }
+            else:
+                print("No content found in article")
+    except Exception as e:
+        print(f"Error scraping article: {str(e)}")
+    
+    return None
+
+def process_and_upload_articles(article_urls: set):
     """Process articles and upload them to Pinecone."""
-    # Create index if it doesn't exist
-    if index_name not in [index.name for index in pc.list_indexes()]:
-        pc.create_index(
-            name=index_name,
-            dimension=1536,  # OpenAI embedding dimension
-            metric='cosine'
-        )
-    
-    index = pc.Index(index_name)
-    
-    # Initialize text splitter
+    print("\nInitializing Pinecone connection...")
+    try:
+        index = pc.Index(index_name)
+        print("Successfully connected to Pinecone index")
+    except Exception as e:
+        print(f"Error connecting to Pinecone: {str(e)}")
+        return
+
     text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=100,
-        length_function=len,
+        chunk_size=500,
+        chunk_overlap=50
     )
     
+    batch = []
     for url in article_urls:
         article = scrape_article(url)
-        if not article:
-            continue
-        
-        print(f"\nProcessing article: {article['title']}")
-        
-        # Split text into chunks
-        chunks = text_splitter.split_text(article['content'])
-        
-        # Create metadata for each chunk
-        metadatas = [{
-            'url': article['url'],
-            'title': article['title'],
-            'chunk': i,
-            'text': chunk[:200]  # Store preview of the chunk
-        } for i, chunk in enumerate(chunks)]
-        
-        # Get embeddings for chunks
+        if article and article["content"]:
+            print(f"\nProcessing article: {article['title']}")
+            
+            # Split content into chunks
+            chunks = text_splitter.split_text(article["content"])
+            print(f"Split into {len(chunks)} chunks")
+            
+            # Create embeddings for each chunk
+            for i, chunk in enumerate(chunks):
+                try:
+                    print(f"Creating embedding for chunk {i+1}/{len(chunks)}")
+                    embedding = embeddings.embed_query(chunk)
+                    batch.append({
+                        "id": f"{url}-{i}",
+                        "values": embedding,
+                        "metadata": {
+                            "url": url,
+                            "title": article["title"],
+                            "content": chunk
+                        }
+                    })
+                except Exception as e:
+                    print(f"Error creating embedding: {str(e)}")
+                    continue
+    
+    # Upload batch to Pinecone
+    if batch:
         try:
-            chunk_embeddings = embeddings.embed_documents(chunks)
-            
-            # Prepare vectors for upload
-            vectors = []
-            for i, (chunk, embedding) in enumerate(zip(chunks, chunk_embeddings)):
-                vector_id = f"{article['url']}_{i}"
-                vectors.append((vector_id, embedding, metadatas[i]))
-            
-            # Upload vectors in batches
-            batch_size = 100
-            for i in range(0, len(vectors), batch_size):
-                batch = vectors[i:i + batch_size]
-                index.upsert(vectors=batch)
-                print(f"Uploaded batch {i//batch_size + 1} of {(len(vectors)-1)//batch_size + 1}")
-            
+            print(f"\nUploading {len(batch)} vectors to Pinecone...")
+            index.upsert(vectors=batch)
+            print("Successfully uploaded to Pinecone!")
         except Exception as e:
-            print(f"Error processing chunks for {article['title']}: {str(e)}")
-            continue
-        
-        print(f"Completed processing article: {article['title']}")
+            print(f"Error uploading to Pinecone: {str(e)}")
+    else:
+        print("\nNo vectors to upload - no content was successfully processed")
 
 if __name__ == "__main__":
-    base_urls = [
-        "https://www.allstate.com/resources/car-insurance",
-        "https://www.allstate.com/resources/home-insurance",
-        "https://www.allstate.com/resources/financial",
-        "https://www.allstate.com/resources/life-insurance",
-        "https://www.allstate.com/resources/retirement",
-    ]
-    article_urls = get_article_urls(base_urls)
+    # Start with just car insurance articles
+    base_url = "https://www.allstate.com/resources/car-insurance"
+    
+    # Collect limited number of article URLs
+    article_urls = get_article_urls(base_url, max_articles=3)
+    print(f"\nTotal unique article URLs collected: {len(article_urls)}")
+    
+    # Process and upload articles
     process_and_upload_articles(article_urls)
