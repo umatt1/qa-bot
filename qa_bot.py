@@ -2,6 +2,7 @@ from langchain.chains import ConversationalRetrievalChain
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain.memory import ConversationBufferMemory
 from langchain.prompts import PromptTemplate
+from langchain.schema import Document
 from dotenv import load_dotenv
 import pinecone
 import os
@@ -37,7 +38,13 @@ Current conversation:
 
 Human Question: {question}
 
-Please provide a helpful, accurate response based on the context provided. If you're unsure about something, say so rather than making assumptions. Always cite specific information from the context when possible."""
+Please provide a helpful, accurate response based on the context provided. Follow these rules:
+1. If you're unsure about something, say so rather than making assumptions
+2. ALWAYS cite your sources using [Title](URL) format after each claim
+3. If you make a general statement without a specific source, clarify that it's general knowledge
+4. If the context doesn't provide enough information for a complete answer, acknowledge this
+5. Group related information from the same source together
+6. End your response with a "Sources Used" section that lists all unique sources"""
 
 QA_PROMPT = PromptTemplate(
     template=qa_template,
@@ -70,8 +77,24 @@ def get_answer(question: str) -> str:
             print(f"Title: {doc.metadata.get('title', 'No Title')}")
             print(f"Content Preview: {doc.page_content[:200] if doc.page_content else 'No content'}")
         
+        # Format documents for better source tracking
+        formatted_docs = []
+        for doc in docs:
+            if doc.page_content:
+                # Add source information directly in the content
+                source_info = f"\nSource: [{doc.metadata.get('title', 'Untitled')}]({doc.metadata.get('url', 'No URL')})"
+                formatted_docs.append(Document(
+                    page_content=doc.page_content + source_info,
+                    metadata=doc.metadata
+                ))
+        
+        # Update the retriever to use formatted documents
+        qa.combine_docs_chain.document_prompt = PromptTemplate(
+            input_variables=["page_content"], template="{page_content}"
+        )
+        
         # Get the answer
-        result = qa({"question": question})
+        result = qa({"question": question, "chat_history": []})
         return result['answer']
     except Exception as e:
         return f"Error getting answer: {str(e)}"
