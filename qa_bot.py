@@ -1,8 +1,9 @@
-from langchain.chains import ConversationalRetrievalChain
+from langchain.chains import ConversationalRetrievalChain, LLMChain
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain.memory import ConversationBufferMemory
 from langchain.prompts import PromptTemplate
 from langchain.schema import Document
+from langchain.chains.qa_with_sources import load_qa_with_sources_chain
 from dotenv import load_dotenv
 import pinecone
 import os
@@ -28,41 +29,26 @@ embeddings = OpenAIEmbeddings(openai_api_key=os.getenv("OPENAI_API_KEY"))
 from langchain.vectorstores import Pinecone
 vectorstore = Pinecone(index, embeddings.embed_query, "text")
 
-# Set up the prompt template
-qa_template = """You are an expert insurance advisor chatbot trained on Allstate's knowledge base. Your goal is to provide accurate, helpful information about insurance topics.
+# Set up the prompt template for combining documents
+COMBINE_PROMPT_TEMPLATE = """Given the following extracted parts of articles about insurance and a question, create a comprehensive answer with citations.
 
-Context: {context}
+Question: {question}
 
-Current conversation:
-{chat_history}
+Relevant article sections:
+{summaries}
 
-Human Question: {question}
+Instructions:
+1. Use only the information from the provided article sections
+2. Cite sources using [Title](URL) format after relevant information
+3. If you don't know something, say so
+4. End with a "Sources Used" section listing all unique sources
+5. Be concise but thorough
 
-Please provide a helpful, accurate response based on the context provided. Follow these rules:
-1. If you're unsure about something, say so rather than making assumptions
-2. ALWAYS cite your sources using [Title](URL) format after each claim
-3. If you make a general statement without a specific source, clarify that it's general knowledge
-4. If the context doesn't provide enough information for a complete answer, acknowledge this
-5. Group related information from the same source together
-6. End your response with a "Sources Used" section that lists all unique sources"""
+Answer:"""
 
-QA_PROMPT = PromptTemplate(
-    template=qa_template,
-    input_variables=["context", "chat_history", "question"]
-)
-
-# Set up conversation memory
-memory = ConversationBufferMemory(
-    memory_key="chat_history",
-    return_messages=True
-)
-
-# Create the conversation chain
-qa = ConversationalRetrievalChain.from_llm(
-    llm=llm,
-    retriever=vectorstore.as_retriever(search_kwargs={"k": 3}),
-    memory=memory,
-    combine_docs_chain_kwargs={"prompt": QA_PROMPT}
+combine_prompt = PromptTemplate(
+    template=COMBINE_PROMPT_TEMPLATE,
+    input_variables=["summaries", "question"]
 )
 
 def get_answer(question: str) -> str:
@@ -81,21 +67,35 @@ def get_answer(question: str) -> str:
         formatted_docs = []
         for doc in docs:
             if doc.page_content:
-                # Add source information directly in the content
-                source_info = f"\nSource: [{doc.metadata.get('title', 'Untitled')}]({doc.metadata.get('url', 'No URL')})"
+                # Create document with required source metadata
                 formatted_docs.append(Document(
-                    page_content=doc.page_content + source_info,
-                    metadata=doc.metadata
+                    page_content=doc.metadata.get('text', doc.page_content),
+                    metadata={
+                        'source': doc.metadata.get('url', 'No URL'),
+                        'title': doc.metadata.get('title', 'No Title')
+                    }
                 ))
         
-        # Update the retriever to use formatted documents
-        qa.combine_docs_chain.document_prompt = PromptTemplate(
-            input_variables=["page_content"], template="{page_content}"
+        if not formatted_docs:
+            return "I couldn't find any relevant information in my knowledge base to answer your question."
+        
+        # Create a QA chain with the correct prompt
+        qa_chain = load_qa_with_sources_chain(
+            llm=llm,
+            chain_type="stuff",
+            prompt=combine_prompt
         )
         
-        # Get the answer
-        result = qa({"question": question, "chat_history": []})
-        return result['answer']
+        # Combine all document content
+        summaries = "\n\n".join(doc.page_content for doc in formatted_docs)
+        
+        # Get the answer using the formatted documents
+        result = qa_chain(
+            {"input_documents": formatted_docs, "question": question, "summaries": summaries},
+            return_only_outputs=True
+        )
+        
+        return result["output_text"]
     except Exception as e:
         return f"Error getting answer: {str(e)}"
 
