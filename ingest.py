@@ -102,35 +102,54 @@ def get_article_urls(base_url: str, max_articles: int = 5) -> set:
     return article_urls
 
 def scrape_article(url: str) -> Dict:
-    """Scrape a single article page."""
+    """Scrape a single article page using Selenium to handle dynamic content."""
     print(f"\n=== Processing article: {url} ===")
     
     try:
-        print("Fetching article...")
-        response = requests.get(url)
-        print(f"Response status: {response.status_code}")
+        print("Setting up browser...")
+        driver = setup_driver()
+        driver.get(url)
         
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.text, 'html.parser')
+        # Wait for content to load
+        print("Waiting for content to load...")
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.ID, "main-content"))
+        )
+        
+        # Give extra time for React content to render
+        time.sleep(2)
+        
+        # Get the page source after JavaScript has run
+        soup = BeautifulSoup(driver.page_source, 'html.parser')
+        
+        # Extract title
+        title = driver.title
+        print(f"Found title: {title}")
+        
+        # Look for content in the React app
+        content_elements = driver.find_elements(By.CSS_SELECTOR, 
+            "#main-content [class*='content'], #main-content [class*='article'], #main-content [class*='text']")
+        
+        if content_elements:
+            # Combine text from all content elements
+            text = "\n".join(element.text for element in content_elements if element.text.strip())
+            print(f"Found content length: {len(text)} characters")
             
-            # Extract title
-            title = soup.title.string if soup.title else ""
-            print(f"Found title: {title}")
-            
-            # Extract main content - adjust selector based on actual page structure
-            content = soup.find('main') or soup.find('article') or soup.find('div', class_='content')
-            if content:
-                text = content.get_text(separator=' ', strip=True)
-                print(f"Found content length: {len(text)} characters")
+            if text.strip():
                 return {
                     "url": url,
                     "title": title,
                     "content": text[:1000]  # Limit content for testing
                 }
             else:
-                print("No content found in article")
+                print("Content elements found but no text extracted")
+        else:
+            print("No content elements found")
+            
     except Exception as e:
         print(f"Error scraping article: {str(e)}")
+    finally:
+        driver.quit()
     
     return None
 
