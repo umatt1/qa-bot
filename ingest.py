@@ -183,15 +183,20 @@ def process_and_upload_articles(article_urls: set):
                 try:
                     print(f"Creating embedding for chunk {i+1}/{len(chunks)}")
                     embedding = embeddings.embed_query(chunk)
+                    
+                    # Store the chunk text in the metadata and as page_content
                     batch.append({
                         "id": f"{url}-{i}",
                         "values": embedding,
                         "metadata": {
                             "url": url,
                             "title": article["title"],
-                            "content": chunk
+                            "chunk_index": i,
+                            "total_chunks": len(chunks),
+                            "text": chunk  # Add text to metadata
                         }
                     })
+                    
                 except Exception as e:
                     print(f"Error creating embedding: {str(e)}")
                     continue
