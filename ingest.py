@@ -50,28 +50,49 @@ def get_article_urls(base_url: str, max_articles: int = 5) -> set:
         # Get page title for debugging
         print(f"\nPage Title: {driver.title}\n")
         
-        # Look for article links
+        # Look specifically for the article container
         print("Looking for article links...")
-        links = driver.find_elements(By.TAG_NAME, "a")
-        print(f"Found {len(links)} total links\n")
         
-        for link in links:
-            if len(article_urls) >= max_articles:
-                break
-                
-            try:
-                href = link.get_attribute("href")
-                text = link.text.strip()
-                
-                if href and text and "/resources/car-insurance/" in href and not any(x in href for x in ["quote", "bundle", "calculator"]):
-                    print(f"Potential article link found:")
-                    print(f"Text: {text}")
-                    print(f"Href: {href}")
-                    article_urls.add(href)
-                    print("Added to article list\n")
+        # Try to find links within main content area first
+        main_content = driver.find_element(By.TAG_NAME, "main")
+        if main_content:
+            # Look for article cards or content sections
+            article_sections = main_content.find_elements(By.CSS_SELECTOR, 
+                "div[class*='article'], div[class*='content'], div[class*='resource']")
+            
+            if not article_sections:
+                # Fallback to looking for lists that might contain articles
+                article_sections = main_content.find_elements(By.CSS_SELECTOR, "ul li")
+            
+            for section in article_sections:
+                if len(article_urls) >= max_articles:
+                    break
                     
-            except Exception as e:
-                continue
+                try:
+                    # Try to find link within the section
+                    link = section.find_element(By.TAG_NAME, "a")
+                    href = link.get_attribute("href")
+                    text = link.text.strip()
+                    
+                    # Only include actual article pages
+                    if (href 
+                        and text 
+                        and "/resources/car-insurance/" in href 
+                        and not any(x in href.lower() for x in [
+                            "quote", "bundle", "calculator", "resources/car-insurance$",
+                            "español", "moving", "disaster", "flood"
+                        ])
+                        and text.lower() not in ["auto", "car insurance", "resources"]
+                    ):
+                        print(f"\nPotential article found:")
+                        print(f"Title: {text}")
+                        print(f"URL: {href}")
+                        article_urls.add(href)
+                        
+                except Exception as e:
+                    continue
+                    
+        print(f"\nFound {len(article_urls)} relevant articles")
                 
     except Exception as e:
         print(f"Error fetching article URLs: {str(e)}")
