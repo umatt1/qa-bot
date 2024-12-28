@@ -28,6 +28,8 @@ embeddings = OpenAIEmbeddings(openai_api_key=os.getenv("OPENAI_API_KEY"))
 # Pinecone index name
 index_name = "allstate-articles"
 
+MOCK_UPLOAD = True
+
 def setup_driver():
     """Setup and return a configured Firefox WebDriver."""
     firefox_options = Options()
@@ -38,7 +40,7 @@ def setup_driver():
     driver = webdriver.Firefox(options=firefox_options)
     return driver
 
-def get_article_urls(base_url: str, max_articles: int = 5) -> set:
+def get_article_urls(base_url: str, max_articles: int = 10) -> set:
     """Collect article URLs from a base page, limited to max_articles."""
     article_urls = set()
     try:
@@ -50,49 +52,124 @@ def get_article_urls(base_url: str, max_articles: int = 5) -> set:
         # Get page title for debugging
         print(f"\nPage Title: {driver.title}\n")
         
-        # Look specifically for the article container
         print("Looking for article links...")
         
-        # Try to find links within main content area first
-        main_content = driver.find_element(By.TAG_NAME, "main")
-        if main_content:
-            # Look for article cards or content sections
-            article_sections = main_content.find_elements(By.CSS_SELECTOR, 
-                "div[class*='article'], div[class*='content'], div[class*='resource']")
+        # Try multiple strategies to find content areas
+        content_areas = []
+        
+        # Strategy 1: Main content area
+        try:
+            main_content = driver.find_element(By.TAG_NAME, "main")
+            if main_content:
+                print("Found main content area")
+                content_areas.append(main_content)
+        except Exception as e:
+            print(f"No main content area found: {str(e)}")
             
-            if not article_sections:
-                # Fallback to looking for lists that might contain articles
-                article_sections = main_content.find_elements(By.CSS_SELECTOR, "ul li")
+        # Strategy 2: Article containers by role
+        try:
+            article_elements = driver.find_elements(By.CSS_SELECTOR, "[role='article']")
+            if article_elements:
+                print(f"Found {len(article_elements)} article elements by role")
+                content_areas.extend(article_elements)
+        except Exception as e:
+            print(f"No article elements found by role: {str(e)}")
             
-            for section in article_sections:
-                if len(article_urls) >= max_articles:
-                    break
-                    
+        # Strategy 3: Common content container classes
+        content_selectors = [
+            "div[class*='article-container']",
+            "div[class*='content-container']",
+            "div[class*='resource-list']",
+            "section[class*='articles']",
+            "div[class*='article-grid']"
+        ]
+        
+        for selector in content_selectors:
+            try:
+                elements = driver.find_elements(By.CSS_SELECTOR, selector)
+                if elements:
+                    print(f"Found {len(elements)} elements using selector: {selector}")
+                    content_areas.extend(elements)
+            except Exception as e:
+                continue
+                
+        if not content_areas:
+            print("No content areas found with primary strategies, falling back to page scan")
+            content_areas = [driver.find_element(By.TAG_NAME, "body")]
+            
+        print(f"\nTotal content areas to search: {len(content_areas)}")
+        
+        # Process each content area
+        for area_idx, content_area in enumerate(content_areas, 1):
+            print(f"\nSearching content area {area_idx}/{len(content_areas)}")
+            
+            # Look for links with article-like content
+            article_selectors = [
+                "a[href*='/resources/']",
+                "a[href*='/articles/']",
+                "a[href*='/blog/']",
+                "div[class*='article'] a",
+                "div[class*='content'] a",
+                "div[class*='resource'] a"
+            ]
+            
+            for selector in article_selectors:
                 try:
-                    # Try to find link within the section
-                    link = section.find_element(By.TAG_NAME, "a")
-                    href = link.get_attribute("href")
-                    text = link.text.strip()
-                    
-                    # Only include actual article pages
-                    if (href 
-                        and text 
-                        and "/resources/car-insurance/" in href 
-                        and not any(x in href.lower() for x in [
-                            "quote", "bundle", "calculator", "resources/car-insurance$",
-                            "español", "moving", "disaster", "flood"
-                        ])
-                        and text.lower() not in ["auto", "car insurance", "resources"]
-                    ):
-                        print(f"\nPotential article found:")
-                        print(f"Title: {text}")
-                        print(f"URL: {href}")
-                        article_urls.add(href)
+                    links = content_area.find_elements(By.CSS_SELECTOR, selector)
+                    if links:
+                        print(f"Found {len(links)} potential links using {selector}")
                         
+                        for link in links:
+                            if len(article_urls) >= max_articles:
+                                print(f"\nReached maximum article limit ({max_articles})")
+                                return article_urls
+                                
+                            href = link.get_attribute("href")
+                            text = link.text.strip()
+                            
+                            if not href or not text:
+                                continue
+                                
+                            print(f"\nEvaluating link:")
+                            print(f"Text: {text}")
+                            print(f"URL: {href}")
+                            
+                            # Refined filtering criteria
+                            if not "/resources/car-insurance/" in href:
+                                print("Skipping: Not in car insurance resources")
+                                continue
+                                
+                            # Exclude utility pages but allow more article content
+                            excluded_terms = [
+                                "quote", "bundle", "calculator",
+                                "español", "moving", "disaster", "flood"
+                            ]
+                            
+                            if any(x in href.lower() for x in excluded_terms):
+                                print(f"Skipping: Contains excluded term")
+                                continue
+                                
+                            # More permissive text filtering
+                            generic_terms = ["auto", "car insurance", "resources", "home"]
+                            if text.lower() in generic_terms and len(text.split()) <= 2:
+                                print("Skipping: Generic navigation link")
+                                continue
+                            
+                            if href in article_urls:
+                                print("Skipping: Duplicate article")
+                                continue
+                                
+                            print("✓ Adding article to collection")
+                            article_urls.add(href)
+                            
                 except Exception as e:
+                    print(f"Error processing selector {selector}: {str(e)}")
                     continue
                     
         print(f"\nFound {len(article_urls)} relevant articles")
+        if len(article_urls) == 0:
+            print("\nDumping page source for debugging...")
+            print(driver.page_source[:1000] + "...")
                 
     except Exception as e:
         print(f"Error fetching article URLs: {str(e)}")
@@ -204,9 +281,12 @@ def process_and_upload_articles(article_urls: set):
     # Upload batch to Pinecone
     if batch:
         try:
-            print(f"\nUploading {len(batch)} vectors to Pinecone...")
-            index.upsert(vectors=batch)
-            print("Successfully uploaded to Pinecone!")
+            if not MOCK_UPLOAD:
+                print(f"\nUploading {len(batch)} vectors to Pinecone...")
+                index.upsert(vectors=batch)
+                print("Successfully uploaded to Pinecone!")
+            else:
+                print("\nMock mode: No vectors uploaded")
         except Exception as e:
             print(f"Error uploading to Pinecone: {str(e)}")
     else:
