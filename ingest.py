@@ -35,22 +35,69 @@ def setup_driver():
     firefox_options = Options()
     firefox_options.add_argument("--headless")
     firefox_options.add_argument("--disable-gpu")
+    firefox_options.add_argument("--window-size=1920,1080")
+    firefox_options.add_argument("--start-maximized")
+    firefox_options.add_argument("--disable-blink-features=AutomationControlled")
+    firefox_options.set_preference("dom.webdriver.enabled", False)
+    firefox_options.set_preference('useAutomationExtension', False)
     
     # Use local Firefox installation instead of downloading
     driver = webdriver.Firefox(options=firefox_options)
+    
+    # Set a reasonable page load timeout
+    driver.set_page_load_timeout(30)
+    
     return driver
+
+def wait_for_page_load(driver, url):
+    """Wait for the page to fully load and render content."""
+    print(f"Loading {url}...")
+    driver.get(url)
+    
+    # Wait for initial page load
+    WebDriverWait(driver, 20).until(
+        EC.presence_of_element_located((By.TAG_NAME, "body"))
+    )
+    
+    print("Initial page load complete, waiting for content...")
+    
+    # Wait for potential overlay/loading elements to disappear
+    try:
+        WebDriverWait(driver, 10).until_not(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "[class*='loading'], [class*='overlay']"))
+        )
+    except:
+        print("No loading overlay found or timeout waiting for it to disappear")
+    
+    # Additional wait for dynamic content
+    time.sleep(5)
+    
+    # Scroll to bottom to trigger lazy loading
+    driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+    time.sleep(2)
+    
+    # Scroll back to top
+    driver.execute_script("window.scrollTo(0, 0);")
+    
+    print("Page fully loaded")
 
 def get_article_urls(base_url: str, max_articles: int = 10) -> set:
     """Collect article URLs from a base page, limited to max_articles."""
     article_urls = set()
     try:
         driver = setup_driver()
+        
         print(f"\n=== Fetching from {base_url} ===")
-        driver.get(base_url)
-        print("Page loaded, waiting for content...")
+        wait_for_page_load(driver, base_url)
         
         # Get page title for debugging
         print(f"\nPage Title: {driver.title}\n")
+        
+        if "Access Denied" in driver.title or "Security Check" in driver.page_source:
+            print("WARNING: Possible security check or access denied page")
+            print("Page source preview:")
+            print(driver.page_source[:500])
+            return article_urls
         
         print("Looking for article links...")
         
@@ -185,7 +232,7 @@ def scrape_article(url: str) -> Dict:
     try:
         print("Setting up browser...")
         driver = setup_driver()
-        driver.get(url)
+        wait_for_page_load(driver, url)
         
         # Wait for content to load
         print("Waiting for content to load...")
