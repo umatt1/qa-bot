@@ -28,7 +28,8 @@ embeddings = OpenAIEmbeddings(openai_api_key=os.getenv("OPENAI_API_KEY"))
 # Pinecone index name
 index_name = "allstate-articles"
 
-MOCK_UPLOAD = True
+# Enable to not upload to Pinecone
+MOCK_UPLOAD = False
 
 def setup_driver():
     """Setup and return a configured Firefox WebDriver."""
