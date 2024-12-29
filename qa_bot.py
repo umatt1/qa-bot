@@ -13,7 +13,7 @@ load_dotenv()
 
 # Initialize Pinecone
 pc = pinecone.Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
-index = pc.Index("allstate-articles")
+index = pc.Index("insurance-articles")
 
 # Initialize OpenAI
 llm = ChatOpenAI(
@@ -31,6 +31,8 @@ vectorstore = Pinecone(index, embeddings.embed_query, "text")
 
 # Set up the prompt template for combining documents
 COMBINE_PROMPT_TEMPLATE = """Given the following extracted parts of articles about insurance and a question, create a comprehensive answer with citations.
+You are providing information for customers of an independent insurance agency offering Autoowners and Progressive.
+Consider all-state articles useful for information, but autoowners and progressive are what is offered.
 
 Question: {question}
 
@@ -38,11 +40,12 @@ Relevant article sections:
 {summaries}
 
 Instructions:
-1. Use only the information from the provided article sections
-2. Cite sources using [Title](URL) format after relevant information
-3. If you don't know something, say so
-4. End with a "Sources Used" section listing all unique sources
-5. Be concise but thorough
+1. Cite sources using [Title](URL) format after relevant information
+2. If you don't know something, indicate to contact an insurance professional.
+3. End with a "Sources Used" section listing all unique sources
+4. Answer the question as concisely as possible
+5. Assume the audience is not an insurance professional and may provide misleading information
+6. Conclude all answers with contact an insurance professional
 
 Answer:"""
 
