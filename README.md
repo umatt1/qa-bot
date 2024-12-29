@@ -1,98 +1,93 @@
-# Insurance QA Chatbot
+# Insurance QA Bot
 
-An intelligent chatbot powered by LangChain that can answer insurance-related questions using Allstate's knowledge base.
+An intelligent chatbot that answers insurance-related questions using content from Auto-owners and Progressive insurance resources. The bot provides accurate, sourced information while encouraging users to contact insurance professionals for specific advice.
 
 ## Project Structure
 
-### Data Ingestion (`ingest.py`)
-- Web scraping script that extracts articles from Allstate's resources
-- Uses Selenium for handling JavaScript-rendered content
-- Processes and stores article content in Pinecone vector database
-- Generates embeddings using OpenAI's embedding model
+- `ingest.py`: Scrapes and processes insurance articles from multiple sources
+  - Configurable source definitions for different insurance providers
+  - Automatic Pinecone index creation and management
+  - Smart content extraction with anti-bot detection avoidance
+  - Chunk-based document processing for better context
 
-#### Article Discovery Process
-The ingestion script finds articles through the following process:
-1. Locates the main content area of resource pages
-2. Searches for article sections using specific CSS selectors
-3. Falls back to list items if no article sections are found
-4. Filters articles based on URL patterns and content relevance
+- `qa_bot.py`: Core question-answering logic
+  - Uses OpenAI for generating human-like responses
+  - Retrieves relevant context from Pinecone vector database
+  - Custom prompt templates for insurance-focused answers
+  - Source citation and professional guidance
 
-Current filtering criteria:
-- Must contain "/resources/car-insurance/" in URL
-- Excludes URLs containing: quotes, bundles, calculators, etc.
-- Excludes generic navigation links
-- Validates both link text and URL are present
-
-#### Known Limitations
-1. Article Discovery:
-   - Currently limited to 3 articles per page (configurable)
-   - Some valid articles may be missed due to strict filtering
-   - Dependent on specific HTML structure patterns
-
-2. Content Processing:
-   - Handles JavaScript-rendered content with wait times
-   - Chunks content into 500-character segments
-   - Uses recursive text splitting with 50-character overlap
-
-#### Planned Improvements
-1. Enhanced Article Discovery:
-   - Increase maximum article limit
-   - Refine HTML structure analysis
-   - Optimize link filtering criteria
-
-2. Content Processing:
-   - Improved chunk size optimization
-   - Better handling of article metadata
-   - Enhanced error recovery
-
-### QA Bot (`qa_bot.py`)
-- Implements an intelligent QA system using LangChain and GPT-4
-- Performs context-aware retrieval using RAG (Retrieval Augmented Generation)
-- Provides source citations for answers
-- Supports natural language queries about insurance topics
-- Uses Pinecone for efficient similarity search of relevant content
+- `app.py`: Streamlit-based user interface
+  - Clean, modern chat interface
+  - Real-time question answering
+  - Chat history preservation
+  - Source attribution display
 
 ## Setup
 
-1. Install dependencies:
+1. Clone the repository:
+```bash
+git clone https://github.com/yourusername/qa-bot.git
+cd qa-bot
+```
+
+2. Create and activate a virtual environment:
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
+
+3. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-2. Set up environment variables in `.env`:
+4. Set up environment variables in `.env`:
 ```
-OPENAI_API_KEY=your_openai_key
-PINECONE_API_KEY=your_pinecone_key
+OPENAI_API_KEY=your_openai_api_key
+PINECONE_API_KEY=your_pinecone_api_key
 ```
 
-3. Run the ingestion script:
+## Usage
+
+1. Ingest insurance articles:
 ```bash
 python ingest.py
 ```
+This will scrape articles from configured sources and store them in Pinecone.
 
-## Technical Details
+2. Run the Streamlit app:
+```bash
+streamlit run app.py
+```
+The app will be available at http://localhost:8501
+
+## Configuration
+
+### Sources
+The bot currently uses the following sources:
+- Auto-owners Insurance (Primary)
+- Progressive Insurance (Primary)
+- Allstate (Supplementary information)
 
 ### Vector Database
-- Uses Pinecone for storing article embeddings
-- Each document is chunked and embedded using OpenAI's embeddings
-- Metadata includes article URL, title, and content preview
+- Uses Pinecone serverless (us-east-1)
+- Index name: "insurance-articles"
+- Embedding: OpenAI (1536 dimensions)
 
-### QA System Architecture
-- RAG (Retrieval Augmented Generation) for accurate responses
-- LangChain for orchestrating the QA pipeline
-- Pinecone vector similarity search for relevant context retrieval
-- GPT-4 for natural language understanding and response generation
-- Source citation system for transparency
+## Notes
 
-## Future Development
-1. Add support for multi-turn conversations with memory
-2. Expand coverage to more insurance topics and knowledge bases
-3. Implement additional fact-checking mechanisms
-4. Add support for policy-specific questions
-5. Enhance source citation formatting and presentation
+- The bot is designed to provide general information and always encourages consulting with insurance professionals for specific advice
+- Content is regularly updated from official insurance provider resources
+- Responses include source citations for transparency
+- The system avoids making specific policy recommendations
 
-## Contributing
-Feel free to contribute by opening issues or submitting pull requests.
+## Requirements
+
+- Python 3.8+
+- OpenAI API key
+- Pinecone API key
+- Firefox (for web scraping)
 
 ## License
-[MIT License](LICENSE)
+
+[Your License Here]
